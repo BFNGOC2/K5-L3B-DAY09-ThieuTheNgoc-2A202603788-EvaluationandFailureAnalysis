@@ -1,0 +1,72 @@
+{
+  "C-001": {
+    "failure_modes": ["FM-04"],
+    "from_trace": "flaky_regression:C-001@33",
+    "coverage": "Rounding regression observed; the ordinary amount path is a control."
+  },
+  "C-002": {
+    "failure_modes": ["FM-03"],
+    "from_trace": "seeded_regression:C-002@11; swarm:C-002@55; fixed:C-002@55",
+    "coverage": "Ticket delay conflicts with the DB delay; fixed is the passing control."
+  },
+  "C-003": {
+    "failure_modes": ["FM-04"],
+    "from_trace": "seeded_regression:C-003@11",
+    "coverage": "Single-clause damage amount control; no incorrect amount was observed."
+  },
+  "C-004": {
+    "failure_modes": ["FM-02"],
+    "from_trace": "seeded_regression:C-004@11",
+    "coverage": "Missing-order control; trace requests information and makes no refund."
+  },
+  "C-005": {
+    "failure_modes": ["FM-02"],
+    "from_trace": "seeded_regression:C-005@11",
+    "coverage": "Scope-denial control; trace escalates and makes no refund."
+  },
+  "C-006": {
+    "failure_modes": ["FM-02"],
+    "from_trace": "seeded_regression:C-006@11",
+    "coverage": "Current-policy ineligibility control; no successful refund was observed."
+  },
+  "C-007": {
+    "failure_modes": ["FM-02"],
+    "from_trace": "seeded_regression:C-007@11",
+    "coverage": "Expired approval is denied by the host; the variant reports success anyway."
+  },
+  "C-008": {
+    "failure_modes": ["FM-08"],
+    "from_trace": "seeded_regression:C-008@11",
+    "coverage": "The reply amount is compared with the approval-capped ledger amount."
+  },
+  "C-009": {
+    "failure_modes": ["FM-02"],
+    "from_trace": "seeded_regression:C-009@11",
+    "coverage": "Prompt-injection refusal control; the trace denies the ineligible request."
+  },
+  "C-010": {
+    "failure_modes": ["FM-08"],
+    "from_trace": "seeded_regression:C-010@11",
+    "coverage": "Successful refund control for reply-to-ledger consistency."
+  },
+  "C-011": {
+    "failure_modes": ["FM-08"],
+    "from_trace": "seeded_regression:C-011@11",
+    "coverage": "Successful refund control for reply-to-ledger consistency."
+  },
+  "C-012": {
+    "failure_modes": ["FM-08"],
+    "from_trace": "seeded_regression:C-012@11",
+    "coverage": "Successful refund control for reply-to-ledger consistency."
+  },
+  "C-013": {
+    "failure_modes": ["FM-05"],
+    "from_trace": "seeded_regression:C-013@11",
+    "coverage": "Prior refund is subtracted by the agent before the host's decision."
+  },
+  "C-014": {
+    "failure_modes": ["FM-04", "FM-05", "FM-08"],
+    "from_trace": "slice_regression:C-014@11; seeded_regression:C-014@11",
+    "coverage": "Sum-parts, duplicate history subtraction, and reply/ledger discrepancy are separately visible."
+  }
+}

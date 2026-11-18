@@ -16,6 +16,7 @@ from typing import Any
 ITEMS = Path("data/eval/eval_set_v1.jsonl")
 LABELS = Path("data/eval/labels_v1.json")
 SOURCE = Path("data/public_claims.jsonl")
+FAILURE_MODE_MAP = Path("data/eval/failure_modes_v1.json")
 VERSION = "v1"
 ITEMS_V2 = Path("data/eval/eval_set_v2.jsonl")
 LABELS_V2 = Path("data/eval/labels_v2.json")
@@ -40,17 +41,37 @@ def sha12(path: Path) -> str:
 
 def build(source: Path = SOURCE) -> tuple[int, int]:
     claims = load_jsonl(source)
+    has_failure_mode_map = FAILURE_MODE_MAP.is_file()
+    failure_mode_map = (
+        json.loads(FAILURE_MODE_MAP.read_text(encoding="utf-8"))
+        if has_failure_mode_map else {}
+    )
+    if has_failure_mode_map:
+        claim_ids = {claim["claim_id"] for claim in claims}
+        missing = claim_ids - failure_mode_map.keys()
+        unknown = failure_mode_map.keys() - claim_ids
+        if missing or unknown:
+            raise ValueError(
+                f"{FAILURE_MODE_MAP} claim IDs differ from {source}: "
+                f"missing={sorted(missing)}, unknown={sorted(unknown)}"
+            )
+
     items, labels = [], {}
     for n, claim in enumerate(claims, start=1):
         item_id = f"E-{n:03d}"
+        assignment = failure_mode_map.get(claim["claim_id"], {})
+        failure_modes = assignment.get("failure_modes", [])
+        if has_failure_mode_map and (not isinstance(failure_modes, list) or not failure_modes):
+            raise ValueError(f"{FAILURE_MODE_MAP}: {claim['claim_id']} needs failure_modes")
         items.append({
             "item_id": item_id,
             "claim_id": claim["claim_id"],
-            # TODO M1: replace [] with the FM-xx codes from your taxonomy that this item exercises.
-            "failure_modes": [],
+            "failure_modes": failure_modes,
             "provenance": {"source": "lab8_public", "matrix_id": claim.get("matrix_id"),
-                           "from_trace": None, "generator": None,
-                           "label_by": "lab8_matrix", "checked_by": None},
+                           "from_trace": assignment.get("from_trace"),
+                           "generator": "lab9.trace_case" if assignment.get("from_trace") else None,
+                           "label_by": "lab8_matrix",
+                           "checked_by": "M1 trace review" if assignment.get("from_trace") else None},
             "split": "regression",
             "eval_set_version": VERSION,
         })
