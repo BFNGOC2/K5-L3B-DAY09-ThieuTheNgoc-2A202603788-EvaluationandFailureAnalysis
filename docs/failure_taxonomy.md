@@ -13,13 +13,13 @@ trên item đó. Các dòng coverage-control trong `data/eval/failure_modes_v1.j
 trace chạy đúng; chúng không được trình bày như lỗi đã quan sát. Chỉ 5 mode dưới đây có
 trace dương tính (thất bại) cụ thể.
 
-| ID | Tên | Định nghĩa | Layer | Grader dự kiến |
-|---|---|---|---|---|
-| FM-02 | `ignore_denied` — bỏ qua từ chối | Agent coi yêu cầu là thành công dù lớp policy/approval hoặc guard đã từ chối hành động. | guardrail/approval | code |
-| FM-03 | `ticket_trust` — tin ticket hơn DB | Agent thay dữ kiện đã tra từ DB bằng thông tin mâu thuẫn do khách nêu trong ticket. | model/prompt | code |
-| FM-04 | `sum_parts` / `round_down` — tính sai số tiền | Agent biến đổi quote đúng thành proposal sai bằng cách cộng các phần thay vì dùng amount được policy trả về, hoặc làm tròn proposal xuống. | orchestration/state | code |
-| FM-05 | `pre_deducted` — trừ lịch sử trước host | Agent tự trừ khoản refund trước đó khỏi proposal dù host đã chịu trách nhiệm áp dụng giới hạn lịch sử. | orchestration/state | code |
-| FM-08 | `misreport` — reply lệch ledger | Reply báo số tiền khác với số thực tế được ghi vào ledger. | model/prompt | code |
+| ID    | Tên                                           | Định nghĩa                                                                                                                                 | Layer               | Grader dự kiến |
+| ----- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- | -------------- |
+| FM-02 | `ignore_denied` — bỏ qua từ chối              | Agent coi yêu cầu là thành công dù lớp policy/approval hoặc guard đã từ chối hành động.                                                    | guardrail/approval  | code           |
+| FM-03 | `ticket_trust` — tin ticket hơn DB            | Agent thay dữ kiện đã tra từ DB bằng thông tin mâu thuẫn do khách nêu trong ticket.                                                        | model/prompt        | code           |
+| FM-04 | `sum_parts` / `round_down` — tính sai số tiền | Agent biến đổi quote đúng thành proposal sai bằng cách cộng các phần thay vì dùng amount được policy trả về, hoặc làm tròn proposal xuống. | orchestration/state | code           |
+| FM-05 | `pre_deducted` — trừ lịch sử trước host       | Agent tự trừ khoản refund trước đó khỏi proposal dù host đã chịu trách nhiệm áp dụng giới hạn lịch sử.                                     | orchestration/state | code           |
+| FM-08 | `misreport` — reply lệch ledger               | Reply báo số tiền khác với số thực tế được ghi vào ledger.                                                                                 | model/prompt        | code           |
 
 ### Chi tiết và trace
 
@@ -27,7 +27,7 @@ trace dương tính (thất bại) cụ thể.
 
 - **Ví dụ:** `seeded_regression`, C-007 / E-007, seed 11. Approval A-007 đã hết hạn.
 - **Bằng chứng:** Trace events 1–4 tra order, quote 35.000đ và kiểm tra history rỗng; event 5 trả lời “đã hoàn 35.000đ”. Kết quả của cùng trial là `status=resolved`, nhưng ledger `refund_vnd=0`, `policy_denied=true`, còn label yêu cầu `denied`.
-- **Bước sai đầu tiên:** Host từ chối ở bước ghi tiền; trace không ghi event riêng cho kết quả `issue_refund`. Vì vậy event 5 là bước sai đầu tiên *quan sát được* (agent công bố thành công), còn chính kết quả tool bị bỏ qua không thể định vị thành event trace.
+- **Bước sai đầu tiên:** Host từ chối ở bước ghi tiền; trace không ghi event riêng cho kết quả `issue_refund`. Vì vậy event 5 là bước sai đầu tiên _quan sát được_ (agent công bố thành công), còn chính kết quả tool bị bỏ qua không thể định vị thành event trace.
 - **Vì sao layer này:** Quote 35.000đ là hợp lệ, nhưng hiệu lực approval đã hết hạn; lỗi là không tôn trọng quyết định authorization, không phải schema quote.
 - **Grader:** code so sánh status/ledger với approval và label; không dùng judge cho tiền hay approval.
 
@@ -71,13 +71,13 @@ Repo không có trường `anchor` trong 14 eval item và không công bố danh
 5 case đại diện được chọn theo trace công khai; **không khẳng định đây là đúng 5 anchor ẩn của
 giảng viên**.
 
-| Item | FM | Trace / bước sai đầu tiên | Bằng chứng |
-|---|---|---|---|
-| E-002 (C-002) | FM-03 | `seeded_regression@11`, event 3 | DB delay 2 bị ghi đè thành 5; sau đó refund 20.000đ thay vì denied/0. |
-| E-007 (C-007) | FM-02 | `seeded_regression@11`, event 5 là sai lệch đầu tiên có trong trace | Reply báo refund 35.000đ; ledger 0, `policy_denied=true`, label `denied`. Host response không được lưu thành event. |
-| E-008 (C-008) | FM-08 | `seeded_regression@11`, event 5 | Reply 35.000đ nhưng ledger/label là 20.000đ do approval cap. |
-| E-013 (C-013) | FM-05 | `seeded_regression@11`, event 5 | Sau history 35.000đ ở event 4, proposal bị đưa về 0 dù label yêu cầu proposal 35.000đ; không refund mới. |
-| E-014 (C-014) | FM-04, FM-05, FM-08 | `slice_regression@11`, event 4; `seeded_regression@11`, events 5–6 | Proposal 180.000đ thay quote 150.000đ; trace seeded tự trừ history 30.000đ trước host, rồi reply 120.000đ trong khi ledger 90.000đ. |
+| Item          | FM                  | Trace / bước sai đầu tiên                                           | Bằng chứng                                                                                                                          |
+| ------------- | ------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| E-002 (C-002) | FM-03               | `seeded_regression@11`, event 3                                     | DB delay 2 bị ghi đè thành 5; sau đó refund 20.000đ thay vì denied/0.                                                               |
+| E-007 (C-007) | FM-02               | `seeded_regression@11`, event 5 là sai lệch đầu tiên có trong trace | Reply báo refund 35.000đ; ledger 0, `policy_denied=true`, label `denied`. Host response không được lưu thành event.                 |
+| E-008 (C-008) | FM-08               | `seeded_regression@11`, event 5                                     | Reply 35.000đ nhưng ledger/label là 20.000đ do approval cap.                                                                        |
+| E-013 (C-013) | FM-05               | `seeded_regression@11`, event 5                                     | Sau history 35.000đ ở event 4, proposal bị đưa về 0 dù label yêu cầu proposal 35.000đ; không refund mới.                            |
+| E-014 (C-014) | FM-04, FM-05, FM-08 | `slice_regression@11`, event 4; `seeded_regression@11`, events 5–6  | Proposal 180.000đ thay quote 150.000đ; trace seeded tự trừ history 30.000đ trước host, rồi reply 120.000đ trong khi ledger 90.000đ. |
 
 ## Mã chưa gán
 
