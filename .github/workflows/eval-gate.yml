@@ -35,18 +35,9 @@ jobs:
       - run: python -m pytest -q -m student -o addopts= -k "lab9 and not advanced"
       - run: python -m lab9.evalset --check
       - name: Verify the PR swarm against the committed baseline
-        shell: bash
         run: |
           python -m lab9.eval --shape swarm --spec "$EVAL_SPEC" --out reports/eval_pr.json
-          gate_status=0
-          gate_output=$(python -m lab9.gate --pr reports/eval_pr.json --baseline "$EVAL_BASELINE" --spec "$EVAL_SPEC") || gate_status=$?
-          printf '%s\n' "$gate_output"
-          # The committed swarm baseline is known to miss these two blocking M3 floors.
-          # Accept only that exact self-baseline verdict; any changed blocker or gate error fails CI.
-          if [[ "$gate_status" -ne 1 ]] || ! grep -Fxq 'exit 1 — blocked: proposal_amount_correct, refund_reply_consistent' <<< "$gate_output"; then
-            echo "Expected only the existing swarm-baseline M3 blockers (proposal_amount_correct, refund_reply_consistent)."
-            exit 1
-          fi
+          python -m lab9.gate --pr reports/eval_pr.json --baseline "$EVAL_BASELINE" --spec "$EVAL_SPEC"
       - name: Check the committed baseline and the M3 metric
         run: python -m lab9.ci_check --pr reports/eval_pr.json --baseline "$EVAL_BASELINE" --spec "$EVAL_SPEC"
       - name: Verify the gate accepts fixed
@@ -72,7 +63,7 @@ jobs:
   eval-gate-v2:
     needs: eval-gate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env: {PYTHONUTF8: "1"}
     defaults: {run: {working-directory: src}}
     steps:
@@ -86,8 +77,14 @@ jobs:
       - if: steps.has.outputs.v2
         run: uv pip install -r requirements.txt -r requirements-lab9.txt
       - if: steps.has.outputs.v2
-        run: python -m pytest -q -m student -o addopts= -k advanced
+        run: python -m pytest -q -m student -o addopts= -k "advanced or m5_m7 or m6_stats"
       - if: steps.has.outputs.v2
-        run: python -m lab9.evalset --v2
+        run: python -m lab9.evalset --v2 --build
+      - if: steps.has.outputs.v2
+        run: python -m lab9.mutation --spec config/metric_spec_v2.yaml --aa 66,77,88,99,110
+      - if: steps.has.outputs.v2
+        run: python -m lab9.eval --shape slice_regression --spec config/metric_spec_v2.yaml --out reports/eval_slice_regression.json
+      - if: steps.has.outputs.v2
+        run: python -m lab9.traps --pr reports/eval_slice_regression.json --baseline reports/baseline_v2.json --spec config/metric_spec_v2.yaml
       - if: steps.has.outputs.v2
         run: python -m lab9.mutation --spec config/metric_spec_v2.yaml --baseline reports/baseline_v2.json

@@ -1,4 +1,4 @@
-"""Statistics students implement (M2 judge calibration, M4 paired bootstrap).
+"""Statistics for M2 judge calibration, M4 paired bootstrap, and M6 pass@k metrics.
 
 Rules: a judge is a classifier -- measure it like one. A higher mean is not
 "better" until the paired CI of the difference excludes 0.
@@ -137,13 +137,53 @@ def paired_bootstrap(a: Sequence[float], b: Sequence[float], *, n_resamples: int
 def pass_at_k(n: int, c: int, k: int) -> float:
     """Probability that AT LEAST ONE of k trials drawn from n (c of them passing) passes.
     Unbiased estimator (Chen et al. 2021): 1 - C(n-c, k) / C(n, k). Raise ValueError if k > n."""
-    # TODO M6
-    raise NotImplementedError
+    n, c, k = _validate_pass_k_counts(n, c, k)
+    if c == 0:
+        return 0.0
+    if k == 1:
+        return c / n
+    if k > n - c:
+        return 1.0
+
+    log_failure_probability = 0.0
+    for i in range(k):
+        failure_fraction = c / (n - i)
+        if failure_fraction >= 1.0:
+            return 1.0
+        log_failure_probability += math.log1p(-failure_fraction)
+    return min(1.0, max(c / n, -math.expm1(log_failure_probability)))
 
 
 def pass_hat_k(n: int, c: int, k: int) -> float:
     """pass^k (tau-bench, Yao et al. 2024): probability that ALL k trials drawn from n pass.
     Unbiased estimator: C(c, k) / C(n, k). Raise ValueError if k > n.
     pass^k <= pass@1 <= pass@k; a reliable agent keeps pass^k close to pass@1."""
-    # TODO M6
-    raise NotImplementedError
+    n, c, k = _validate_pass_k_counts(n, c, k)
+    if k > c:
+        return 0.0
+    if k == 1:
+        return c / n
+    if c == n:
+        return 1.0
+
+    log_success_probability = 0.0
+    for i in range(k):
+        failure_fraction = (n - c) / (n - i)
+        if failure_fraction >= 1.0:
+            log_success_probability += math.log(c - i) - math.log(n - i)
+        else:
+            log_success_probability += math.log1p(-failure_fraction)
+    return min(c / n, max(0.0, math.exp(log_success_probability)))
+
+
+def _validate_pass_k_counts(n: int, c: int, k: int) -> tuple[int, int, int]:
+    for name, value in (("n", n), ("c", c), ("k", k)):
+        if isinstance(value, bool) or not isinstance(value, Integral):
+            raise ValueError(f"{name} must be an integer")
+    if n <= 0:
+        raise ValueError("n must be positive")
+    if not 0 <= c <= n:
+        raise ValueError("c must be between 0 and n")
+    if not 1 <= k <= n:
+        raise ValueError("k must be between 1 and n")
+    return int(n), int(c), int(k)

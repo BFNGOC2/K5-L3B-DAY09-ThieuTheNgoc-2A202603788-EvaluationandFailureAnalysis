@@ -1,8 +1,8 @@
 {
   "C-001": {
-    "failure_modes": ["FM-04"],
-    "from_trace": "flaky_regression:C-001@33",
-    "coverage": "Rounding regression observed; the ordinary amount path is a control."
+    "failure_modes": ["FM-04", "FM-07"],
+    "from_trace": "flaky_regression:C-001@33; sibling_refund_probe:C-001@11",
+    "coverage": "Rounding regression and claim-scoped refund behavior; O-107 has sibling claims."
   },
   "C-002": {
     "failure_modes": ["FM-03"],
@@ -25,9 +25,9 @@
     "coverage": "Scope-denial control; trace escalates and makes no refund."
   },
   "C-006": {
-    "failure_modes": ["FM-02"],
-    "from_trace": "seeded_regression:C-006@11",
-    "coverage": "Current-policy ineligibility control; no successful refund was observed."
+    "failure_modes": ["FM-02", "FM-06"],
+    "from_trace": "seeded_regression:C-006@11; stale_policy_probe:C-006@11",
+    "coverage": "Ineligible current policy and an obsolete clause named in the ticket."
   },
   "C-007": {
     "failure_modes": ["FM-02"],
@@ -45,19 +45,19 @@
     "coverage": "Prompt-injection refusal control; the trace denies the ineligible request."
   },
   "C-010": {
-    "failure_modes": ["FM-08"],
-    "from_trace": "seeded_regression:C-010@11",
-    "coverage": "Successful refund control for reply-to-ledger consistency."
+    "failure_modes": ["FM-08", "FM-07"],
+    "from_trace": "seeded_regression:C-010@11; sibling_refund_probe:C-010@11",
+    "coverage": "Reply-to-ledger consistency and claim-scoped refund on shared order O-107."
   },
   "C-011": {
-    "failure_modes": ["FM-08"],
-    "from_trace": "seeded_regression:C-011@11",
-    "coverage": "Successful refund control for reply-to-ledger consistency."
+    "failure_modes": ["FM-08", "FM-07"],
+    "from_trace": "seeded_regression:C-011@11; sibling_refund_probe:C-011@11",
+    "coverage": "Reply-to-ledger consistency and claim-scoped refund on shared order O-107."
   },
   "C-012": {
-    "failure_modes": ["FM-08"],
-    "from_trace": "seeded_regression:C-012@11",
-    "coverage": "Successful refund control for reply-to-ledger consistency."
+    "failure_modes": ["FM-08", "FM-07"],
+    "from_trace": "seeded_regression:C-012@11; sibling_refund_probe:C-012@11",
+    "coverage": "Reply-to-ledger consistency and claim-scoped refund on shared order O-107."
   },
   "C-013": {
     "failure_modes": ["FM-05"],
