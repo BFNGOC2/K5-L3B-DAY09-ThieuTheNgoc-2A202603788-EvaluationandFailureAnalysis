@@ -7,33 +7,84 @@ Reference values to self-check are in tests/test_lab9_stats.py.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
+from numbers import Integral, Real
 
 POS = "FAIL"   # the judge's job is to FIND failures, so FAIL is the positive class
 
 
+def _normalize_labels(human: Sequence[str], judge: Sequence[str]) -> tuple[list[str], list[str]]:
+    if len(human) != len(judge):
+        raise ValueError(f"human and judge label counts differ: {len(human)} != {len(judge)}")
+
+    def normalize(labels: Sequence[str], name: str) -> list[str]:
+        result = []
+        for label in labels:
+            if not isinstance(label, str) or label.strip().upper() not in {"PASS", POS}:
+                raise ValueError(f"{name} labels must be PASS or FAIL; got {label!r}")
+            result.append(label.strip().upper())
+        return result
+
+    return normalize(human, "human"), normalize(judge, "judge")
+
+
 def confusion(human: Sequence[str], judge: Sequence[str]) -> dict[str, int]:
     """tp/fp/fn/tn with FAIL as positive."""
-    # TODO M2
-    raise NotImplementedError
+    h, j = _normalize_labels(human, judge)
+    return {
+        "tp": sum(a == POS and b == POS for a, b in zip(h, j)),
+        "fp": sum(a != POS and b == POS for a, b in zip(h, j)),
+        "fn": sum(a == POS and b != POS for a, b in zip(h, j)),
+        "tn": sum(a != POS and b != POS for a, b in zip(h, j)),
+    }
 
 
 def precision_recall(human: Sequence[str], judge: Sequence[str]) -> tuple[float, float]:
-    # TODO M2: precision = tp/(tp+fp), recall = tp/(tp+fn); return 0.0 when the denominator is 0
-    raise NotImplementedError
+    counts = confusion(human, judge)
+    predicted_positive = counts["tp"] + counts["fp"]
+    actual_positive = counts["tp"] + counts["fn"]
+    precision = counts["tp"] / predicted_positive if predicted_positive else 0.0
+    recall = counts["tp"] / actual_positive if actual_positive else 0.0
+    return precision, recall
 
 
 def cohen_kappa(human: Sequence[str], judge: Sequence[str]) -> float:
     """kappa = (p_o - p_e) / (1 - p_e). Raise ValueError when undefined (p_e == 1):
     a constant judge has no signal and must FAIL calibration, not pass on a technicality."""
-    # TODO M2
-    raise NotImplementedError
+    h, j = _normalize_labels(human, judge)
+    n = len(h)
+    if not n:
+        raise ValueError("Cohen's kappa is undefined for empty label sequences")
+    observed = sum(a == b for a, b in zip(h, j)) / n
+    expected = sum(
+        (h.count(label) / n) * (j.count(label) / n)
+        for label in ("PASS", POS)
+    )
+    if expected == 1:
+        raise ValueError("Cohen's kappa is undefined when expected agreement is 1")
+    return (observed - expected) / (1 - expected)
 
 
 def rogan_gladen(observed_rate: float, sensitivity: float, specificity: float) -> float:
     """Correct an observed failure rate for judge error; clip to [0, 1]."""
-    # TODO M2: (p_obs + spec - 1) / (sens + spec - 1)
-    raise NotImplementedError
+    rates = {
+        "observed_rate": observed_rate,
+        "sensitivity": sensitivity,
+        "specificity": specificity,
+    }
+    for name, value in rates.items():
+        try:
+            valid_rate = math.isfinite(value) and 0 <= value <= 1
+        except TypeError:
+            valid_rate = False
+        if not valid_rate:
+            raise ValueError(f"{name} must be a finite rate in [0, 1]; got {value!r}")
+    denominator = sensitivity + specificity - 1
+    if denominator == 0:
+        raise ValueError("Rogan-Gladen correction is undefined when sensitivity + specificity = 1")
+    corrected = (observed_rate + specificity - 1) / denominator
+    return min(1.0, max(0.0, corrected))
 
 
 def paired_bootstrap(a: Sequence[float], b: Sequence[float], *, n_resamples: int = 1000,
@@ -41,8 +92,46 @@ def paired_bootstrap(a: Sequence[float], b: Sequence[float], *, n_resamples: int
     """a[i], b[i] = per-item mean over seeds, SAME items, SAME order.
     Return (mean(a)-mean(b), lo, hi) with scipy.stats.bootstrap(paired=True, method="percentile",
     rng=numpy.random.default_rng(rng)). If a == b everywhere return (0.0, 0.0, 0.0)."""
-    # TODO M4
-    raise NotImplementedError
+    import numpy as np
+    from scipy import stats as scipy_stats
+
+    if len(a) != len(b):
+        raise ValueError(f"paired samples must have equal length: {len(a)} != {len(b)}")
+    if len(a) == 0:
+        raise ValueError("paired samples must not be empty")
+    if isinstance(n_resamples, bool) or not isinstance(n_resamples, Integral) or n_resamples <= 0:
+        raise ValueError("n_resamples must be a positive integer")
+    if (isinstance(confidence, bool) or not isinstance(confidence, Real)
+            or not math.isfinite(confidence) or not 0 < confidence < 1):
+        raise ValueError("confidence must be a finite value between 0 and 1")
+
+    try:
+        values_a = np.asarray(a, dtype=float)
+        values_b = np.asarray(b, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("paired samples must contain numeric values") from exc
+    if values_a.ndim != 1 or values_b.ndim != 1:
+        raise ValueError("paired samples must be one-dimensional")
+    if not np.isfinite(values_a).all() or not np.isfinite(values_b).all():
+        raise ValueError("paired samples must contain only finite values")
+    if np.array_equal(values_a, values_b):
+        return 0.0, 0.0, 0.0
+
+    def mean_difference(candidate, baseline, axis=-1):
+        return np.mean(candidate - baseline, axis=axis)
+
+    delta = float(np.mean(values_a) - np.mean(values_b))
+    result = scipy_stats.bootstrap(
+        (values_a, values_b),
+        mean_difference,
+        n_resamples=int(n_resamples),
+        confidence_level=float(confidence),
+        method="percentile",
+        paired=True,
+        vectorized=True,
+        rng=np.random.default_rng(rng),
+    )
+    return delta, float(result.confidence_interval.low), float(result.confidence_interval.high)
 
 
 def pass_at_k(n: int, c: int, k: int) -> float:
