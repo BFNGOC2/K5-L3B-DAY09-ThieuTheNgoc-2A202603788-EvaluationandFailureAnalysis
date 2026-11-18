@@ -81,14 +81,16 @@ Workflow chạy khi mở PR (hoặc chạy tay ở tab Actions), không chạy k
 
 Ở M0, cả hai lệnh trả exit 0. Các item mới có `failure_modes` rỗng. Sau khi gắn mã lỗi từ taxonomy ở M1, chạy `python -m lab9.evalset --check` và kiểm tra kết quả có 0 lỗi.
 
-**Commit report trước khi merge.** `.gitignore` bỏ qua `src/reports/`, nên `git add -A` không đưa report lên repo. Người chấm mở link repo chỉ thấy nhánh `main`, nên sau M4 (và M5–M7 nếu làm) commit mọi report sinh bằng script:
+**Commit report trước khi merge.** `.gitignore` bỏ qua `src/reports/`, nên `git add -A` không đưa report lên repo. Người chấm mở link repo chỉ thấy nhánh `main`, nên sau M4 (và M5–M7 nếu làm) commit baseline sinh bằng CLI:
 ```bash
 cd src
-python -m lab9.eval --shape fixed && python -m lab9.eval --shape seeded_regression
-git add -f reports/*.json && git commit -m "chore: add eval reports"
+python -m lab9.eval --shape swarm --spec config/metric_spec.yaml --out reports/baseline_v1.json
+python -m lab9.eval --shape swarm --spec config/metric_spec_v2.yaml --out reports/baseline_v2.json
+git add -f reports/baseline_v1.json reports/baseline_v2.json
+git commit -m "chore: add eval baselines"
 ```
 
-Job `eval-gate` cần các bài tập đã hoàn thành và baseline M4. Job chạy test học viên, kiểm tra eval set, rồi dùng cùng metric spec và baseline để chấm `swarm` của PR và xác nhận `fixed` qua gate, `seeded_regression` bị chặn ở `pass_rate`.
+Job `eval-gate` cần baseline M4. Job chạy test học viên, kiểm tra eval set, rồi dùng cùng metric spec và baseline để chấm `swarm` của PR và xác nhận `fixed` qua gate, `seeded_regression` bị chặn ở `pass_rate`. Job `eval-gate-v2` chỉ chạy khi commit có `reports/baseline_v2.json`; nó kiểm tra eval set v2, A/A, traps và mutation scorecard.
 
 ## Advanced / Expert (M5–M7): làm tiếp tới hạn nộp
 
@@ -96,12 +98,12 @@ Core (M0–M4, 60đ) chứng minh gate chặn được một regression **rõ r�
 
 ```bash
 cd src
-# M5 — eval set v2: điền config/fm_map.yaml (cơ chế tấn công -> mã FM của bạn), rồi build + check
+# M5 — eval set v2, provenance, taxonomy mapping và slice gate
 python -m lab9.evalset --v2 --build          # mỗi FM bị tấn công cần >= 3 item
-# Điền TODO trong config/metric_spec_v2.yaml (slices, pass_hat_5, metric FM-08) và slice_check trong gate.py
+# Sinh baseline v2 bằng CLI; CI chỉ chạy Advanced/Expert khi artifact này đã commit
 python -m lab9.eval --shape swarm --spec config/metric_spec_v2.yaml --out reports/baseline_v2.json
 
-# M6 — nhiễu: cài stats.pass_at_k / pass_hat_k; chọn ngưỡng NGOÀI dải nhiễu A/A
+# M6 — A/A: delta và 95% paired CI theo từng item
 python -m lab9.mutation --spec config/metric_spec_v2.yaml --aa 66,77,88,99,110
 
 # M5–M7 — scorecard: mọi variant công khai qua graders + spec + gate CỦA BẠN
@@ -112,7 +114,8 @@ python -m lab9.mutation --spec config/metric_spec_v2.yaml --baseline reports/bas
 python -m lab9.eval --shape slice_regression --spec config/metric_spec_v2.yaml --out reports/eval_slice_regression.json
 python -m lab9.traps --pr reports/eval_slice_regression.json --baseline reports/baseline_v2.json --spec config/metric_spec_v2.yaml
 #   exit 0 chỉ khi gate chặn mọi trap; exit 1 = có trap lọt (tên in ở dòng cuối)
-python -m pytest -q -m student -o addopts= -k advanced     # vector công khai; bộ chấm dùng vector ẩn
+git add -f reports/baseline_v2.json            # baseline được CI đọc; không sửa report bằng tay
+python -m pytest -q -m student -o addopts= -k "advanced or m5_m7 or m6_stats"
 ```
 
 | Variant / trap | Thực tế tương ứng | Gate đúng phải |
@@ -134,17 +137,17 @@ Lưu ý: một bug chỉ xuất hiện ở 1/3 seed (`rare`) **không** phát hi
 
 ## Bản đồ file
 ```
-src/lab9/evalset.py   eval set v1 + provenance + check        (TODO M1: failure_modes)
-src/lab9/graders.py   pydantic-evals Evaluators               (TODO M3: 2 grader)
-src/lab9/stats.py     confusion, P/R, kappa, RG, bootstrap    (TODO M2, M4)
+src/lab9/evalset.py   eval sets v1/v2, labels, provenance, slices and checks
+src/lab9/graders.py   pydantic-evals trajectory and outcome graders
+src/lab9/stats.py     calibration, paired bootstrap, pass@k / pass^k
 src/lab9/trace_case.py trace → bước sai đầu tiên cho 1 claim@seed (docs/trace_case.md)
 src/lab9/judge.py     calibrate judge từ CSV (replay)
 src/lab9/eval.py      chạy 1 shape → reports/eval_<shape>.json có run_id
-src/lab9/gate.py      PR vs baseline theo metric_spec → exit 0/1
+src/lab9/gate.py      metric, slice, integrity and ratchet gates → exit 0/1
 src/lab9/variants.py  fixed / seeded_regression (+ honest_refactor, slice_, flaky_regression cho v2)
 src/lab9/mutation.py  scorecard: variant công khai qua gate của bạn; --aa = nhiễu A/A   (M5–M7)
 src/lab9/traps.py     sinh report đã bị làm đẹp để thử integrity_check                  (M7)
-src/config/metric_spec_v2.yaml, fm_map.yaml, data/eval/adversarial_v2.json             (TODO M5, M6)
+src/config/metric_spec_v2.yaml, fm_map.yaml, data/eval/adversarial_v2.json             (M5–M7)
 src/config/metric_spec.yaml   ngưỡng (ratchet: cùng eval-set version chỉ được chặt hơn)
 ```
 Quy tắc: không sửa file `lab8/`; không sửa tay `reports/`; không đặt nhãn inline trong item.

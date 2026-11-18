@@ -6,7 +6,7 @@ mutant; a harmless change it blocks is a false alarm. Both cost points.
     python -m lab9.mutation --spec config/metric_spec_v2.yaml --aa 66,77,88,99,110
     python -m lab9.mutation --detect          # M3: detection / false-alarm rate of your graders (v1 spec)
 
---aa runs swarm on a second seed set and prints the per-metric difference from the baseline run.
+--aa runs swarm on a second seed set and prints per-item paired deltas and confidence intervals.
 That is the A/A noise floor you use to pick thresholds; it is NOT a gate run (the gate rightly
 refuses a report whose (item, seed) set differs from the baseline's).
 The instructor runs the same loop with hidden variants and traps.
@@ -17,8 +17,8 @@ import argparse
 import json
 from pathlib import Path
 
-from lab9 import gate, variants
-from lab9.eval import SPEC, load_spec, run_eval
+from lab9 import gate, stats, variants
+from lab9.eval import SPEC, load_spec, per_item, run_eval
 from lab9.graders import GRADERS
 
 EXPECTED = {
@@ -28,6 +28,36 @@ EXPECTED = {
     "slice_regression": "block",
     "flaky_regression": "block",
 }
+
+
+def _per_item_series(report: dict, metric: str) -> dict[str, float]:
+    if report["rows"] and metric in report["rows"][0]:
+        return per_item(report, metric)
+
+    grouped: dict[str, list[dict]] = {}
+    for row in report["rows"]:
+        grouped.setdefault(row["item_id"], []).append(row)
+
+    if metric == "pass_5":
+        return {item: float(all(bool(row.get("pass_rate")) for row in rows))
+                for item, rows in grouped.items()}
+    if metric.startswith(("pass_at_", "pass_hat_")):
+        family, k_text = metric.rsplit("_", 1)
+        k = int(k_text)
+        estimator = stats.pass_at_k if family == "pass_at" else stats.pass_hat_k
+        result = {}
+        for item, rows in grouped.items():
+            passes = sum(bool(row.get("pass_rate")) for row in rows)
+            result[item] = estimator(len(rows), passes, k)
+        return result
+    if metric == "cost_per_success":
+        result = {}
+        for item, rows in grouped.items():
+            successes = sum(bool(row.get("pass_rate")) for row in rows)
+            result[item] = (sum(float(row.get("cost") or 0.0) for row in rows) / successes
+                            if successes else float("nan"))
+        return result
+    return {}
 
 
 def scorecard(spec: dict, base: dict, base_spec: dict | None) -> list[tuple[str, str, str, list[str]]]:
@@ -70,12 +100,29 @@ def main(argv: list[str] | None = None) -> int:
         print(f"detection {det:.2%} (target >=80%) · false alarms {fa:.2%} (target <=10%)")
         return 0 if ok else 1
     if args.aa:
-        a = run_eval("swarm", spec)["metrics"]
-        b = run_eval("swarm", spec, [int(x) for x in args.aa.split(",")])["metrics"]
-        print(f"{'metric':<22} {'spec seeds':>10} {'alt seeds':>10} {'delta':>8}")
-        for k in a:
-            if isinstance(a[k], (int, float)) and isinstance(b.get(k), (int, float)):
-                print(f"{k:<22} {a[k]:>10} {b[k]:>10} {b[k] - a[k]:>+8.4f}")
+        primary = run_eval("swarm", spec)
+        alternate = run_eval("swarm", spec, [int(x) for x in args.aa.split(",")])
+        bootstrap = spec.get("bootstrap", {})
+        print(f"{'metric':<22} {'spec seeds':>10} {'alt seeds':>10} {'delta':>9} {'95% paired CI':>23}")
+        for metric, primary_value in primary["metrics"].items():
+            alternate_value = alternate["metrics"].get(metric)
+            if not isinstance(primary_value, (int, float)) or not isinstance(alternate_value, (int, float)):
+                continue
+            primary_items = _per_item_series(primary, metric)
+            alternate_items = _per_item_series(alternate, metric)
+            keys = sorted(primary_items)
+            if not keys or keys != sorted(alternate_items):
+                print(f"{metric:<22} {primary_value:>10} {alternate_value:>10} {'missing':>9} {'unpaired items':>23}")
+                return 1
+            delta, low, high = stats.paired_bootstrap(
+                [primary_items[key] for key in keys],
+                [alternate_items[key] for key in keys],
+                n_resamples=bootstrap.get("n_resamples", 1000),
+                rng=bootstrap.get("rng", 2027),
+                confidence=bootstrap.get("confidence", 0.95),
+            )
+            print(f"{metric:<22} {primary_value:>10} {alternate_value:>10} "
+                  f"{delta:>+9.4f} [{low:+.4f}, {high:+.4f}]")
         return 0
     base = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
     base_spec = load_spec(Path(args.base_spec)) if args.base_spec else None

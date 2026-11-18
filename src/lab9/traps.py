@@ -22,7 +22,8 @@ from lab9.eval import SPEC, aggregate, load_spec
 
 
 def _recompute(rep: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
-    ids = [m for m in rep["metrics"] if m in {x["id"] for x in spec["metrics"]} and m in rep["rows"][0]]
+    row_keys = set(rep["rows"][0]) if rep["rows"] else set()
+    ids = [m for m in rep["metrics"] if m in {x["id"] for x in spec["metrics"]} and m in row_keys]
     rep["metrics"] = aggregate(rep["rows"], ids, k_values=spec.get("pass_k", []))
     return rep
 
@@ -102,11 +103,12 @@ def main(argv: list[str] | None = None) -> int:
             line += f" --spec {sp_path} --base-spec {args.spec}"
         else:
             line += f" --spec {args.spec}"
-        blocked, _ = gate.check(rep, base, sp if sp is not None else spec, spec if sp is not None else None)
+        blocked, details = gate.check(rep, base, sp if sp is not None else spec, spec if sp is not None else None)
         verdict = "blocked" if blocked else "LEAKED "
         if not blocked:
             leaked.append(name)
-        print(f"trap {name:<24} {verdict}  python -m lab9.gate {line}")
+        reason = "; ".join(detail.strip() for detail in details)
+        print(f"trap {name:<24} {verdict}  {reason}  python -m lab9.gate {line}")
     if leaked:
         print(f"exit 1 — {len(leaked)} trap(s) got through the gate: {', '.join(leaked)}")
         return 1

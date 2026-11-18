@@ -1,7 +1,8 @@
-"""Eval set v1: items and labels live in separate files; every item records provenance.
+"""Eval sets: items and labels live in separate files; every item records provenance.
 
 Build it once from the Lab 8 public claims:  python -m lab9.evalset --build
 Check it:                                    python -m lab9.evalset --check
+Build/check v2:                              python -m lab9.evalset --v2 --build
 """
 
 from __future__ import annotations
@@ -105,12 +106,25 @@ def build_v2(items_v1: Path = ITEMS, labels_v1: Path = LABELS, pack: Path = PACK
     base = load_jsonl(items_v1)
     labels = json.loads(labels_v1.read_text(encoding="utf-8"))
     p = json.loads(pack.read_text(encoding="utf-8"))
+    mechanisms = {mechanism for claim in p["claims"] for mechanism in claim["mechanisms"]}
+    missing = mechanisms - mapping.keys()
+    unknown = mapping.keys() - mechanisms
+    if missing or unknown:
+        raise ValueError(
+            f"{fm_map} mechanisms differ from {pack}: missing={sorted(missing)}, "
+            f"unknown={sorted(unknown)}"
+        )
+    invalid = {mechanism: fm for mechanism, fm in mapping.items()
+               if not isinstance(fm, str) or not FM_CODE.fullmatch(fm)}
+    if invalid:
+        raise ValueError(f"{fm_map} contains invalid failure-mode codes: {invalid}")
+
     items = [{**it, "eval_set_version": "v2", "slices": slices_for(labels[it["claim_id"]], False)} for it in base]
     for claim in p["claims"]:
         items.append({
             "item_id": f"E-{claim['claim_id'][2:]}",   # C-105 -> E-105
             "claim_id": claim["claim_id"],
-            "failure_modes": [mapping.get(m) or f"UNMAPPED:{m}" for m in claim["mechanisms"]],
+            "failure_modes": list(dict.fromkeys(mapping[m] for m in claim["mechanisms"])),
             "provenance": {"source": "instructor_adversarial", "matrix_id": None, "from_trace": None,
                            "generator": f"attack:{claim['attack']}", "label_by": "instructor",
                            "checked_by": "fixed_shape_replay"},
@@ -119,6 +133,7 @@ def build_v2(items_v1: Path = ITEMS, labels_v1: Path = LABELS, pack: Path = PACK
             "slices": slices_for(claim["expected"], True),
         })
         labels[claim["claim_id"]] = claim["expected"]
+    ITEMS_V2.parent.mkdir(parents=True, exist_ok=True)
     ITEMS_V2.write_text("".join(json.dumps(i, ensure_ascii=False) + "\n" for i in items), encoding="utf-8")
     LABELS_V2.write_text(json.dumps(labels, ensure_ascii=False, indent=2), encoding="utf-8")
     return len(items), len(labels)
@@ -132,21 +147,36 @@ def check(items_path: Path = ITEMS, labels_path: Path = LABELS) -> list[str]:
         missing = [k for k in REQUIRED if k not in item]
         if missing:
             problems.append(f"{item.get('item_id')}: missing {missing}")
+        provenance = item.get("provenance")
+        if not isinstance(provenance, dict) or not provenance.get("source") or not provenance.get("label_by"):
+            problems.append(f"{item.get('item_id')}: incomplete provenance")
         if "expected" in item or "label" in item:
             problems.append(f"{item['item_id']}: inline label")
         if item.get("claim_id") not in labels:
             problems.append(f"{item['item_id']}: no label for {item.get('claim_id')}")
-        if not item.get("failure_modes"):
+        failure_modes = item.get("failure_modes")
+        if not isinstance(failure_modes, list) or not failure_modes:
             problems.append(f"{item['item_id']}: failure_modes empty (fill from taxonomy)")
+        problems += [f"{item['item_id']}: duplicate failure mode" for fm in set(failure_modes or [])
+                     if (failure_modes or []).count(fm) > 1]
         problems += [f"{item['item_id']}: {fm} (fill config/fm_map.yaml)"
-                     for fm in item.get("failure_modes") or [] if str(fm).startswith("UNMAPPED:")]
+                     for fm in failure_modes or [] if str(fm).startswith("UNMAPPED:")]
         problems += [f"{item['item_id']}: {fm!r} is not a failure-mode code like FM-03"
-                     for fm in item.get("failure_modes") or []
+                     for fm in failure_modes or []
                      if not str(fm).startswith("UNMAPPED:") and not FM_CODE.fullmatch(str(fm))]
+        if items_path == ITEMS_V2 or item.get("eval_set_version") == "v2":
+            if item.get("split") not in {"regression", "adversarial"}:
+                problems.append(f"{item.get('item_id')}: invalid v2 split {item.get('split')!r}")
+            claim_labels = labels.get(item.get("claim_id"))
+            if isinstance(claim_labels, dict):
+                want_slices = slices_for(claim_labels, item.get("split") == "adversarial")
+                if item.get("slices") != want_slices:
+                    problems.append(f"{item.get('item_id')}: slices do not match label-derived slices")
     ids = [it.get("item_id") for it in items]
     problems += [f"{i}: duplicate item_id" for i in sorted({i for i in ids if ids.count(i) > 1})]
     cids = [it.get("claim_id") for it in items]
     problems += [f"{c}: claim appears in more than one item" for c in sorted({c for c in cids if cids.count(c) > 1})]
+    problems += [f"{c}: label has no corresponding item" for c in sorted(labels.keys() - set(cids))]
     v2 = items_path == ITEMS_V2 or any(it.get("eval_set_version") == "v2" for it in items)
     if v2:
         problems += [f"{it.get('item_id')}: eval_set_version {it.get('eval_set_version')!r}, want 'v2'"
@@ -168,7 +198,7 @@ def check(items_path: Path = ITEMS, labels_path: Path = LABELS) -> list[str]:
         attacked = {fm for it in items if it.get("split") == "adversarial" for fm in it.get("failure_modes") or []}
         count: dict[str, int] = {}
         for item in items:
-            for fm in item.get("failure_modes") or []:
+            for fm in set(item.get("failure_modes") or []):
                 count[fm] = count.get(fm, 0) + 1
         problems += [f"{fm}: only {c} item(s) in v2, need >= {MIN_PER_MODE_V2}"
                      for fm, c in sorted(count.items()) if fm in attacked and c < MIN_PER_MODE_V2]
